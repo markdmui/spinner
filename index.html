@@ -524,19 +524,41 @@ document.getElementById('start').addEventListener('click', async () => {
 });
 
 // ---------- draw ----------
+// the finger trail as one tapered shape, filled once: no overlapping pieces, so no dots at the joints
+function ribbon(live, now, life, w0, w1, alpha) {
+  const pts = [];
+  for (const p of live) { const q = pts[pts.length - 1]; if (!q || Math.hypot(p.x - q.x, p.y - q.y) > 1.5) pts.push(p); }
+  if (pts.length < 2) return;
+  const n = pts.length, L = [], R = [];
+  let nx = 0, ny = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+    if (d > 0) { nx = -dy / d; ny = dx / d; }
+    const f = Math.max(0, 1 - (now - pts[i].t) / life), w = (w0 + w1 * f) / 2 * Math.min(1, f * 3);
+    L.push([pts[i].x + nx * w, pts[i].y + ny * w]); R.push([pts[i].x - nx * w, pts[i].y - ny * w]);
+  }
+  const head = pts[n - 1], fh = Math.max(0, 1 - (now - head.t) / life), wh = (w0 + w1 * fh) / 2;
+  const g = tctx.createLinearGradient(pts[0].x, pts[0].y, head.x, head.y);
+  g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, `rgba(255,255,255,${alpha})`);
+  tctx.fillStyle = g;
+  tctx.beginPath();
+  // smooth edges: curve through the midpoints of each side
+  const side = (S) => {
+    for (let i = 1; i < S.length - 1; i++) tctx.quadraticCurveTo(S[i][0], S[i][1], (S[i][0] + S[i + 1][0]) / 2, (S[i][1] + S[i + 1][1]) / 2);
+    tctx.lineTo(S[S.length - 1][0], S[S.length - 1][1]);
+  };
+  tctx.moveTo(L[0][0], L[0][1]); side(L);
+  const ang = Math.atan2(ny, nx);
+  tctx.arc(head.x, head.y, wh, ang, ang - Math.PI, true);   // round tip at the finger
+  const Rb = R.slice().reverse(); side(Rb);
+  tctx.closePath(); tctx.fill();
+}
 function drawTrail(now) {
   tctx.clearRect(0, 0, W, H);
   const live = trailPts.filter(p => now - p.t < 260);
   trailPts = live;
-  if (live.length > 1) {
-    tctx.lineCap = 'round'; tctx.lineJoin = 'round';
-    for (let i = 1; i < live.length; i++) {
-      const a = live[i - 1], b = live[i], f = 1 - (now - b.t) / 260;
-      tctx.strokeStyle = `rgba(255,255,255,${0.55 * f})`;
-      tctx.lineWidth = 2 + 10 * f;
-      tctx.beginPath(); tctx.moveTo(a.x, a.y); tctx.lineTo(b.x, b.y); tctx.stroke();
-    }
-  }
+  ribbon(live, now, 260, 2, 10, 0.55);
   if (hudOn && leverLine && leverFade > 0) {
     const { fx, fy, ux, uy } = leverLine, L = Math.max(W, H);
     tctx.setLineDash([4, 6]); tctx.lineWidth = 1;
